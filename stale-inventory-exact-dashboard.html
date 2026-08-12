@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ERE Stale Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F6F7F9; --surface:#FFFFFF; --ink:#10151F; --ink-soft:#5B6472;
+    --line:#E5E8ED; --navy:#1B3A6B; --gold:#E2A33D; --green:#1F8A5F; --red:#C4392B; --amber:#B7791F;
+    --mono:'IBM Plex Mono', ui-monospace, monospace; --sans:'Inter', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased;}
+  .hidden{display:none !important;}
+
+  input[type=text], input[type=number], input[type=date], select{
+    border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:14px; font-family:var(--sans);
+    background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus{outline:2px solid var(--navy); outline-offset:1px;}
+  .btn{ background:var(--navy); color:#fff; border:none; border-radius:8px; padding:9px 15px; font-size:13px; font-weight:600; cursor:pointer; font-family:var(--sans); white-space:nowrap; }
+  .btn:hover{background:#142c52;}
+  .btn-ghost{background:transparent; color:var(--navy); border:1px solid var(--line); border-radius:8px; padding:9px 15px; font-size:13px; font-weight:600; cursor:pointer; font-family:var(--sans);}
+  .btn-ghost:hover{background:#F0F2F5;}
+  .btn-sm{padding:6px 11px; font-size:12px; border-radius:7px;}
+  .btn-sm.active{background:var(--navy); color:#fff;}
+
+  header{background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10;}
+  .header-inner{max-width:1180px; margin:0 auto; padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+  .brand{display:flex; align-items:center; gap:10px; flex:none;}
+  .brand-mark{width:22px; height:22px; background:var(--navy); border-radius:5px; position:relative; flex:none;}
+  .brand-mark::after{content:''; position:absolute; inset:5px; border:2px solid var(--gold); border-radius:2px;}
+  .brand-name{font-weight:700; font-size:14.5px; letter-spacing:-.01em;}
+  nav{display:flex; gap:2px; flex-wrap:wrap;}
+  nav button{ background:none; border:none; padding:8px 13px; font-size:13.5px; font-weight:500; color:var(--ink-soft); cursor:pointer; border-radius:7px; font-family:var(--sans); }
+  nav button.active{background:#EEF1F5; color:var(--ink); font-weight:600;}
+  .session-controls{display:flex; align-items:center; gap:8px; flex:none;}
+  .session-controls input[type=text]{width:110px; padding:6px 9px; font-size:12.5px;}
+
+  main{max-width:1180px; margin:0 auto; padding:28px 20px 60px;}
+  .page-title{font-size:19px; font-weight:700; margin:0 0 4px;}
+  .page-sub{font-size:13px; color:var(--ink-soft); margin:0 0 22px; line-height:1.5;}
+  .banner{ background:#FEFAE8; border:1px solid #EEDFA0; border-radius:10px; padding:12px 16px; font-size:12.5px; color:#7A5E14; margin-bottom:22px; line-height:1.5; }
+
+  .summary-row{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px;}
+  .summary-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px;}
+  .summary-label{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 8px;}
+  .summary-value{font-family:var(--mono); font-size:20px; font-weight:600;}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:12px; margin-bottom:20px; overflow:hidden;}
+  .card-head{padding:14px 18px; border-bottom:1px solid var(--line); font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;}
+  .card-body{padding:16px 18px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{ text-align:left; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:500; padding:9px 14px; border-bottom:2px solid var(--gold); background:#FBFAF6; white-space:nowrap; }
+  th.num, td.num{text-align:right;}
+  td{padding:9px 14px; border-bottom:1px solid var(--line); font-family:var(--mono); white-space:nowrap;}
+  td.label-cell{font-family:var(--sans); font-weight:600;}
+  tr:last-child td{border-bottom:none;}
+  .tag{font-family:var(--sans); font-size:10px; font-weight:600; padding:3px 7px; border-radius:5px; display:inline-block;}
+  .tag-liquidate{background:#FBEBE8; color:var(--red);}
+  .tag-deep{background:#FDF0E3; color:var(--amber);}
+  .tag-begin{background:#FEFAE8; color:#7A5E14;}
+  .tag-monitor{background:#EEF1F5; color:var(--ink-soft);}
+  .empty-row td{text-align:center; color:var(--ink-soft); font-family:var(--sans); padding:32px;}
+
+  .form-row{display:flex; align-items:center; gap:12px; margin-bottom:12px;}
+  .form-row label{width:190px; font-size:13px; color:var(--ink-soft); flex:none;}
+  .form-row select, .form-row input{flex:1;}
+  .form-row .hint{font-size:11.5px; color:var(--ink-soft); margin-left:8px;}
+  .file-drop{ border:1.5px dashed var(--line); border-radius:10px; padding:22px; text-align:center; cursor:pointer; font-size:13px; color:var(--ink-soft); margin-bottom:16px; }
+  .file-drop:hover{border-color:var(--navy); color:var(--navy);}
+  .status-msg{font-size:13px; margin-top:12px; padding:10px 12px; border-radius:8px;}
+  .status-ok{background:#EAF6EF; color:var(--green);}
+  .status-err{background:#FBEBE8; color:var(--red);}
+  .yellow-cell{background:#FEFAE8; border-color:#EEDFA0;}
+  #import-input{display:none;}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header>
+    <div class="header-inner">
+      <div class="brand"><div class="brand-mark"></div><span class="brand-name">Stale Inventory</span></div>
+      <nav>
+        <button data-page="summary" class="active">Summary</button>
+        <button data-page="flagged">Flagged Base SKUs</button>
+        <button data-page="variants">Variant Breakout</button>
+        <button data-page="upload">Upload</button>
+        <button data-page="settings">Settings</button>
+      </nav>
+      <div class="session-controls">
+        <input type="text" id="your-name" placeholder="Your name" title="Used to label exports — not stored anywhere" />
+        <button class="btn-ghost btn-sm" id="import-btn">Import session</button>
+        <input type="file" id="import-input" accept="application/json" />
+        <button class="btn btn-sm" id="export-session-btn">Export session</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="banner">
+      Runs entirely in your browser — nothing is uploaded or saved anywhere. Refreshing clears everything.
+      Use <strong>Export session</strong> to save your data + settings, or the CSV export on each tab for a finished snapshot.
+    </div>
+
+    <!-- SUMMARY -->
+    <section id="page-summary">
+      <h1 class="page-title">Stale Inventory Summary</h1>
+      <p class="page-sub">Sell-through below threshold over the lookback window, bucketed by days since the base SKU was last received.</p>
+      <div class="summary-row" id="summary-cards"></div>
+      <div class="card">
+        <div class="card-head">Buckets — flagged base SKUs</div>
+        <table>
+          <thead><tr><th>Days Since Last Received</th><th>Action Tier</th><th class="num">Base SKUs</th><th class="num">Units On Hand</th><th class="num">% of Units</th></tr></thead>
+          <tbody id="bucket-summary-table"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-head">Scope &amp; Exclusions</div>
+        <div class="card-body" id="scope-notes" style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;"></div>
+      </div>
+    </section>
+
+    <!-- FLAGGED BASE SKUS -->
+    <section id="page-flagged" class="hidden">
+      <h1 class="page-title">Flagged Base SKUs</h1>
+      <p class="page-sub">Below sell-through threshold, last received 31+ days ago (or never received).</p>
+      <div class="form-row" style="max-width:600px;">
+        <label>Filter bucket</label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn-sm active" data-bucket="all">All</button>
+          <button class="btn-sm" data-bucket="Monitor">31–60 Monitor</button>
+          <button class="btn-sm" data-bucket="Begin discounting">61–90 Begin discounting</button>
+          <button class="btn-sm" data-bucket="Deeper ladder">91–120 Deeper ladder</button>
+          <button class="btn-sm" data-bucket="Liquidate">120+ Liquidate</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head">Base SKUs<button class="btn-ghost btn-sm" id="export-flagged-csv">Export CSV</button></div>
+        <table>
+          <thead><tr>
+            <th>Base SKU</th><th class="num">Available</th><th class="num">Sold (window)</th><th class="num">Sell-Through %</th>
+            <th class="num">Days Since Last Sale</th><th>Last Received</th><th class="num">Days Since Received</th><th>Bucket</th><th>Action</th>
+          </tr></thead>
+          <tbody id="flagged-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- VARIANT BREAKOUT -->
+    <section id="page-variants" class="hidden">
+      <h1 class="page-title">Variant Breakout</h1>
+      <p class="page-sub">Supporting detail — every size under the flagged base SKUs. Not filtered or bucketed individually.</p>
+      <div class="card">
+        <div class="card-head">Sizes<button class="btn-ghost btn-sm" id="export-variants-csv">Export CSV</button></div>
+        <table>
+          <thead><tr>
+            <th>SKU</th><th>Base SKU</th><th class="num">Available</th><th class="num">Sold (window)</th>
+            <th class="num">Variant Sell-Through %</th><th class="num">Days Since Last Sale</th><th>Last Received</th><th class="num">Days Since Received</th>
+          </tr></thead>
+          <tbody id="variants-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- UPLOAD -->
+    <section id="page-upload" class="hidden">
+      <h1 class="page-title">Upload</h1>
+      <p class="page-sub" id="upload-page-sub"></p>
+      <div class="card">
+        <div class="card-body">
+          <div class="form-row">
+            <label>Upload type</label>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button id="mode-inventory" class="btn btn-sm">Current Qty</button>
+              <button id="mode-sales" class="btn-ghost btn-sm">Sales History</button>
+              <button id="mode-received" class="btn-ghost btn-sm">Received History</button>
+            </div>
+          </div>
+          <p id="mode-summary" style="font-size:12.5px; color:var(--ink-soft); margin:-4px 0 14px;"></p>
+          <div class="file-drop" id="file-drop">
+            <div id="file-drop-label">Click to choose a CSV or XLSX file</div>
+            <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none;" />
+          </div>
+          <div id="mapping-block" class="hidden"></div>
+          <button class="btn hidden" id="upload-submit">Upload</button>
+          <div id="upload-status"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="page-settings" class="hidden">
+      <h1 class="page-title">Settings</h1>
+      <p class="page-sub">Every yellow cell here drives the whole report live.</p>
+
+      <div class="card">
+        <div class="card-head">Parameters</div>
+        <div class="card-body">
+          <div class="form-row"><label>Lookback window (days)</label><input type="number" class="yellow-cell" id="lookback" style="max-width:90px;"/></div>
+          <div class="form-row"><label>Sell-through threshold</label><input type="number" step="0.01" class="yellow-cell" id="threshold" style="max-width:90px;"/><span class="hint">e.g. 0.3 = 30%</span></div>
+          <div class="form-row"><label>Window end / as-of date</label><input type="date" class="yellow-cell" id="asof-date" style="max-width:160px;"/></div>
+          <div class="form-row"><label>Eligibility floor (days)</label><input type="number" class="yellow-cell" id="elig-floor" style="max-width:90px;"/><span class="hint">received within this many days = not eligible</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Bucket Boundaries (days since received)</div>
+        <div class="card-body">
+          <div class="form-row"><label>Monitor ends at</label><input type="number" class="yellow-cell" id="b1" style="max-width:90px;"/><span class="hint">31–60</span></div>
+          <div class="form-row"><label>Begin discounting ends at</label><input type="number" class="yellow-cell" id="b2" style="max-width:90px;"/><span class="hint">61–90</span></div>
+          <div class="form-row"><label>Deeper ladder ends at</label><input type="number" class="yellow-cell" id="b3" style="max-width:90px;"/><span class="hint">91–120, beyond = Liquidate</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Exclusions</div>
+        <div class="card-body">
+          <div class="form-row"><label>Bulk/wholesale threshold</label><input type="number" class="yellow-cell" id="bulk-threshold" style="max-width:90px;"/><span class="hint">a base SKU with any single line at/above this unit count is dropped entirely</span></div>
+          <div class="form-row"><label>Excluded name patterns</label><input type="text" class="yellow-cell" id="excluded-patterns"/><span class="hint">comma-separated, matches anywhere in SKU (e.g. auction, live pull)</span></div>
+          <p style="font-size:12px; color:var(--ink-soft); margin-top:8px;">ASICS is intentionally <strong>not</strong> excluded in this build, per your instruction — it stays in scope like any other brand.</p>
+        </div>
+      </div>
+
+      <div class="card" id="excluded-list-card">
+        <div class="card-head">Excluded for Bulk/Wholesale Activity</div>
+        <div class="card-body" id="excluded-list-body" style="font-size:12.5px; color:var(--ink-soft);"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const SIZE_SUFFIX_RE = /-\d{1,2}(\.[05])?[A-Za-z]?$/;
+const toBaseSku = s => (s||"").replace(SIZE_SUFFIX_RE,"");
+const todayStr = () => new Date().toISOString().slice(0,10);
+const daysBetween = (a,b) => Math.floor((a-b)/86400000);
+
+let appData = {
+  inventory: {},     // sku -> qty
+  salesRows: [],      // {sku, baseSku, date, units}
+  receivedRows: [],   // {sku, baseSku, date, units}
+  settings: {
+    lookback: 90,
+    threshold: 0.3,
+    asOfDate: '',
+    eligFloor: 30,
+    buckets: [60,90,120],
+    bulkThreshold: 6,
+    excludedPatterns: 'auction, live pull'
+  }
+};
+let parsedFile = null;
+let uploadMode = 'inventory';
+let bucketFilter = 'all';
+let computed = null;
+
+// ---------- Nav ----------
+document.querySelectorAll('nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    ['summary','flagged','variants','upload','settings'].forEach(p=>{
+      document.getElementById('page-'+p).classList.toggle('hidden', p!==btn.dataset.page);
+    });
+    renderPage(btn.dataset.page);
+  });
+});
+
+function renderPage(page){
+  computed = compute();
+  if(page==='summary') renderSummary();
+  if(page==='flagged') renderFlagged();
+  if(page==='variants') renderVariants();
+  if(page==='settings') renderSettings();
+}
+
+// ---------- Core computation ----------
+function compute(){
+  const s = appData.settings;
+  const asOf = new Date(s.asOfDate || todayStr());
+  const windowStart = new Date(asOf); windowStart.setDate(windowStart.getDate()-s.lookback);
+  const excludedPatterns = s.excludedPatterns.split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+  const isExcludedName = sku => excludedPatterns.some(p=>p && sku.toLowerCase().includes(p));
+
+  // Per-SKU variant stats
+  const skus = new Set([
+    ...Object.keys(appData.inventory),
+    ...appData.salesRows.map(r=>r.sku),
+    ...appData.receivedRows.map(r=>r.sku)
+  ]);
+
+  const variantStats = {};
+  skus.forEach(sku=>{
+    if(isExcludedName(sku)) return;
+    const available = appData.inventory[sku] || 0;
+    const salesForSku = appData.salesRows.filter(r=>r.sku===sku);
+    const soldWindow = salesForSku.filter(r=>r.date>=windowStart && r.date<=asOf).reduce((s,r)=>s+r.units,0);
+    const hasBulkLine = salesForSku.some(r=>r.units >= s.bulkThreshold);
+    let lastSaleDate = null;
+    salesForSku.forEach(r=>{ if(r.date<=asOf && (!lastSaleDate || r.date>lastSaleDate)) lastSaleDate = r.date; });
+    const daysSinceLastSale = lastSaleDate ? daysBetween(asOf, lastSaleDate) : null;
+
+    const receivedForSku = appData.receivedRows.filter(r=>r.sku===sku);
+    let lastReceivedDate = null;
+    receivedForSku.forEach(r=>{ if(!lastReceivedDate || r.date>lastReceivedDate) lastReceivedDate = r.date; });
+
+    variantStats[sku] = {
+      sku, baseSku: toBaseSku(sku), available, soldWindow, hasBulkLine,
+      daysSinceLastSale, lastReceivedDate
+    };
+  });
+
+  // Group into base SKUs
+  const bases = {};
+  Object.values(variantStats).forEach(v=>{
+    if(!bases[v.baseSku]) bases[v.baseSku] = {variants:[]};
+    bases[v.baseSku].variants.push(v);
+  });
+
+  const excludedForBulk = [];
+  const flaggedBases = [];
+  const allBaseRows = [];
+
+  Object.keys(bases).forEach(base=>{
+    const vs = bases[base].variants;
+    const anyBulk = vs.some(v=>v.hasBulkLine);
+    if(anyBulk){ excludedForBulk.push(base); return; }
+
+    const available = vs.reduce((s,v)=>s+v.available,0);
+    const sold = vs.reduce((s,v)=>s+v.soldWindow,0);
+    const sellThrough = (sold+available)===0 ? 0 : sold/(sold+available);
+
+    const saleDays = vs.map(v=>v.daysSinceLastSale).filter(d=>d!=null);
+    const daysSinceLastSale = saleDays.length ? Math.min(...saleDays) : null;
+
+    const recvDates = vs.map(v=>v.lastReceivedDate).filter(d=>d!=null);
+    const lastReceivedDate = recvDates.length ? new Date(Math.max(...recvDates.map(d=>d.getTime()))) : null;
+    const daysSinceReceived = lastReceivedDate ? daysBetween(asOf, lastReceivedDate) : null;
+
+    // Eligibility: must have been received 31+ days ago, OR never received at all (treated as 120+/no data)
+    const eligible = lastReceivedDate ? daysSinceReceived > s.eligFloor : true;
+
+    const baseRow = {baseSku:base, available, sold, sellThrough, daysSinceLastSale, lastReceivedDate, daysSinceReceived, variants:vs};
+    allBaseRows.push(baseRow);
+
+    if(!eligible) return;
+    if(sellThrough >= s.threshold) return;
+
+    const [b1,b2,b3] = s.buckets;
+    let bucket, action;
+    if(!lastReceivedDate || daysSinceReceived > b3){ bucket='120+'; action='Liquidate'; }
+    else if(daysSinceReceived > b2){ bucket='91-120'; action='Deeper ladder'; }
+    else if(daysSinceReceived > b1){ bucket='61-90'; action='Begin discounting'; }
+    else { bucket='31-60'; action='Monitor'; }
+
+    flaggedBases.push({...baseRow, bucket, action});
+  });
+
+  return {variantStats, allBaseRows, flaggedBases, excludedForBulk};
+}
+
+// ---------- Summary ----------
+const ACTION_TAG = {Monitor:'tag-monitor', 'Begin discounting':'tag-begin', 'Deeper ladder':'tag-deep', Liquidate:'tag-liquidate'};
+
+function renderSummary(){
+  const flagged = computed.flaggedBases;
+  const totalUnits = flagged.reduce((s,b)=>s+b.available,0);
+  const buckets = ['31-60','61-90','91-120','120+'];
+  const bucketMeta = {'31-60':'Monitor','61-90':'Begin discounting','91-120':'Deeper ladder','120+':'Liquidate'};
+
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="summary-card"><p class="summary-label">Flagged Base SKUs</p><p class="summary-value">${flagged.length.toLocaleString()}</p></div>
+    <div class="summary-card"><p class="summary-label">Units On Hand</p><p class="summary-value">${totalUnits.toLocaleString()}</p></div>
+    <div class="summary-card"><p class="summary-label">Universe Scanned</p><p class="summary-value">${computed.allBaseRows.length.toLocaleString()}</p></div>
+    <div class="summary-card"><p class="summary-label">Excluded (bulk/wholesale)</p><p class="summary-value">${computed.excludedForBulk.length.toLocaleString()}</p></div>`;
+
+  const tbody = document.getElementById('bucket-summary-table');
+  tbody.innerHTML = '';
+  buckets.forEach(b=>{
+    const rows = flagged.filter(r=>r.bucket===b);
+    const units = rows.reduce((s,r)=>s+r.available,0);
+    const pct = totalUnits===0 ? 0 : (units/totalUnits*100);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="label-cell">${b}</td><td><span class="tag ${ACTION_TAG[bucketMeta[b]]}">${bucketMeta[b]}</span></td>
+      <td class="num">${rows.length.toLocaleString()}</td><td class="num">${units.toLocaleString()}</td><td class="num">${pct.toFixed(1)}%</td>`;
+    tbody.appendChild(tr);
+  });
+  const totTr = document.createElement('tr');
+  totTr.innerHTML = `<td class="label-cell">TOTAL</td><td></td><td class="num">${flagged.length.toLocaleString()}</td><td class="num">${totalUnits.toLocaleString()}</td><td></td>`;
+  tbody.appendChild(totTr);
+
+  document.getElementById('scope-notes').innerHTML = `
+    • Universe scanned: ${computed.allBaseRows.length.toLocaleString()} base SKUs with data.<br/>
+    • Flagged: ${flagged.length.toLocaleString()} base SKUs / ${totalUnits.toLocaleString()} units below ${(appData.settings.threshold*100).toFixed(0)}% sell-through, last received ${appData.settings.eligFloor}+ days ago (or never received).<br/>
+    • Excluded for bulk/wholesale activity: ${computed.excludedForBulk.length.toLocaleString()} base SKUs (any single sales line at/above ${appData.settings.bulkThreshold} units drops the whole base SKU).<br/>
+    • Auction/live-pull and other excluded-name patterns are filtered before analysis.<br/>
+    • ASICS is included in this report — not excluded, per your instruction.<br/>
+    • Sell-through is computed on the entire base SKU across all sizes; a single dead size will not surface if the base SKU as a whole clears the threshold.`;
+}
+
+// ---------- Flagged ----------
+document.querySelectorAll('[data-bucket]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('[data-bucket]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    bucketFilter = btn.dataset.bucket;
+    renderFlagged();
+  });
+});
+
+function renderFlagged(){
+  let rows = [...computed.flaggedBases];
+  if(bucketFilter!=='all') rows = rows.filter(r=>r.action===bucketFilter);
+  rows.sort((a,b)=> b.available - a.available);
+
+  const tbody = document.getElementById('flagged-table');
+  tbody.innerHTML = '';
+  if(rows.length===0){
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No flagged base SKUs match this filter, or no data uploaded yet.</td></tr>';
+    return;
+  }
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="label-cell">${r.baseSku}</td>
+      <td class="num">${r.available.toLocaleString()}</td>
+      <td class="num">${r.sold.toLocaleString()}</td>
+      <td class="num">${(r.sellThrough*100).toFixed(1)}%</td>
+      <td class="num">${r.daysSinceLastSale ?? '—'}</td>
+      <td>${r.lastReceivedDate ? r.lastReceivedDate.toISOString().slice(0,10) : '—'}</td>
+      <td class="num">${r.daysSinceReceived ?? '—'}</td>
+      <td>${r.bucket}</td>
+      <td><span class="tag ${ACTION_TAG[r.action]}">${r.action}</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- Variant breakout ----------
+function renderVariants(){
+  const flaggedBaseSkus = new Set(computed.flaggedBases.map(b=>b.baseSku));
+  let rows = [];
+  computed.flaggedBases.forEach(b=>{
+    b.variants.forEach(v=>{
+      const vst = (v.soldWindow+v.available)===0 ? 0 : v.soldWindow/(v.soldWindow+v.available);
+      rows.push({...v, vst});
+    });
+  });
+  rows.sort((a,b)=> b.available - a.available);
+
+  const tbody = document.getElementById('variants-table');
+  tbody.innerHTML = '';
+  if(rows.length===0){
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No flagged base SKUs yet.</td></tr>';
+    return;
+  }
+  rows.forEach(v=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="label-cell">${v.sku}</td><td>${v.baseSku}</td>
+      <td class="num">${v.available.toLocaleString()}</td><td class="num">${v.soldWindow.toLocaleString()}</td>
+      <td class="num">${(v.vst*100).toFixed(1)}%</td><td class="num">${v.daysSinceLastSale ?? '—'}</td>
+      <td>${v.lastReceivedDate ? v.lastReceivedDate.toISOString().slice(0,10) : '—'}</td>
+      <td class="num">${v.lastReceivedDate ? daysBetween(new Date(appData.settings.asOfDate||todayStr()), v.lastReceivedDate) : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- CSV export ----------
+function downloadFile(content, filename, mime){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function tableToCsv(tableId){
+  const wrapper = document.getElementById(tableId).closest('.card');
+  const headerCells = wrapper.querySelectorAll('thead th');
+  const rows = [Array.from(headerCells).map(h=>h.textContent.trim()).join(',')];
+  document.querySelectorAll(`#${tableId} tr`).forEach(tr=>{
+    const cells = Array.from(tr.querySelectorAll('td')).map(td=>{
+      let t = td.textContent.trim().replace(/"/g,'""');
+      return t.includes(',') ? `"${t}"` : t;
+    });
+    if(cells.length) rows.push(cells.join(','));
+  });
+  return rows.join('\n');
+}
+document.getElementById('export-flagged-csv').addEventListener('click', ()=> downloadFile(tableToCsv('flagged-table'), `stale-inventory-flagged-${todayStr()}.csv`, 'text/csv'));
+document.getElementById('export-variants-csv').addEventListener('click', ()=> downloadFile(tableToCsv('variants-table'), `stale-inventory-variants-${todayStr()}.csv`, 'text/csv'));
+
+// ---------- Upload ----------
+const MODE_META = {
+  inventory: { fields:['sku','qty'], label:'Upload the Current Available Quantity report — one row per SKU with quantity on hand.' },
+  sales:     { fields:['sku','date','units'], label:'Upload the Sales History report — one row per sale/order line, with a date column.' },
+  received:  { fields:['sku','date','units'], label:'Upload the Received History report — one row per receiving event, with a date column.' },
+};
+function setUploadMode(m){
+  uploadMode = m;
+  resetUploadForm();
+  ['inventory','sales','received'].forEach(k=>{
+    document.getElementById('mode-'+k).className = (k===m) ? 'btn btn-sm' : 'btn-ghost btn-sm';
+  });
+  document.getElementById('upload-page-sub').textContent = MODE_META[m].label;
+  renderModeSummary();
+}
+['inventory','sales','received'].forEach(k=>{
+  document.getElementById('mode-'+k).addEventListener('click', ()=> setUploadMode(k));
+});
+function renderModeSummary(){
+  const el = document.getElementById('mode-summary');
+  if(uploadMode==='inventory') el.textContent = `${Object.keys(appData.inventory).length} SKUs currently loaded.`;
+  else if(uploadMode==='sales') el.textContent = `${appData.salesRows.length} sales rows currently loaded.`;
+  else el.textContent = `${appData.receivedRows.length} receiving rows currently loaded.`;
+}
+function resetUploadForm(){
+  parsedFile = null;
+  document.getElementById('file-drop-label').textContent = 'Click to choose a CSV or XLSX file';
+  document.getElementById('mapping-block').classList.add('hidden');
+  document.getElementById('upload-submit').classList.add('hidden');
+  document.getElementById('upload-status').textContent = '';
+  document.getElementById('file-input').value = '';
+}
+
+document.getElementById('file-drop').addEventListener('click', ()=> document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('file-drop-label').textContent = file.name;
+  parsedFile = await parseFile(file);
+  renderMapping();
+});
+
+async function parseFile(file){
+  const isCsv = file.name.toLowerCase().endsWith('.csv');
+  if(isCsv){
+    const text = await file.text();
+    const result = Papa.parse(text, {header:true, skipEmptyLines:true});
+    return { headers: result.meta.fields || [], rows: result.data, fileName:file.name };
+  }
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+  const headers = rows.length ? Object.keys(rows[0]) : [];
+  return { headers, rows, fileName:file.name };
+}
+
+function guessMapping(headers){
+  const fields = MODE_META[uploadMode].fields;
+  const auto = {}; fields.forEach(f=>auto[f]='');
+  headers.forEach(h=>{
+    const l = h.toLowerCase();
+    if(fields.includes('sku') && !auto.sku && (l.includes('sku')||l.includes('item'))) auto.sku=h;
+    if(fields.includes('qty') && !auto.qty && (l.includes('qty')||l.includes('quantity')||l.includes('available'))) auto.qty=h;
+    if(fields.includes('date') && !auto.date && l.includes('date')) auto.date=h;
+    if(fields.includes('units') && !auto.units && l.includes('unit')) auto.units=h;
+  });
+  return auto;
+}
+
+let currentMapping = {};
+function renderMapping(){
+  currentMapping = guessMapping(parsedFile.headers);
+  const fields = MODE_META[uploadMode].fields;
+  const block = document.getElementById('mapping-block');
+  block.classList.remove('hidden');
+  block.innerHTML = `<p style="font-size:13px; color:var(--ink-soft); margin:4px 0 14px;">${parsedFile.rows.length} rows detected. Confirm column mapping:</p>`;
+  fields.forEach(f=>{
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const opts = ['<option value="">— skip —</option>']
+      .concat(parsedFile.headers.map(h=>`<option value="${h}" ${currentMapping[f]===h?'selected':''}>${h}</option>`));
+    row.innerHTML = `<label>${f}</label><select data-field="${f}">${opts.join('')}</select>`;
+    block.appendChild(row);
+  });
+  block.querySelectorAll('select').forEach(sel=>{
+    sel.addEventListener('change', ()=> currentMapping[sel.dataset.field] = sel.value);
+  });
+  document.getElementById('upload-submit').classList.remove('hidden');
+}
+
+function normalizeDate(v){
+  if(!v) return null;
+  const d = new Date(v);
+  if(!isNaN(d.getTime())) return d;
+  return null;
+}
+
+document.getElementById('upload-submit').addEventListener('click', ()=>{
+  if(!parsedFile){ showUploadStatus('Choose a file first.', false); return; }
+  let count = 0;
+  let maxDate = null;
+
+  if(uploadMode==='inventory'){
+    if(!currentMapping.sku || !currentMapping.qty){ showUploadStatus('Map both SKU and quantity.', false); return; }
+    parsedFile.rows.forEach(r=>{
+      const sku = String(r[currentMapping.sku]||'').trim();
+      const qty = Number(r[currentMapping.qty]);
+      if(!sku || isNaN(qty)) return;
+      appData.inventory[sku] = qty;
+      count++;
+    });
+  } else {
+    if(!currentMapping.sku || !currentMapping.date || !currentMapping.units){ showUploadStatus('Map SKU, date, and units.', false); return; }
+    const target = uploadMode==='sales' ? appData.salesRows : appData.receivedRows;
+    parsedFile.rows.forEach(r=>{
+      const sku = String(r[currentMapping.sku]||'').trim();
+      const date = normalizeDate(r[currentMapping.date]);
+      const units = Number(r[currentMapping.units]);
+      if(!sku || !date || isNaN(units)) return;
+      target.push({sku, baseSku:toBaseSku(sku), date, units});
+      if(!maxDate || date>maxDate) maxDate = date;
+      count++;
+    });
+  }
+
+  if(maxDate && !appData.settings.asOfDate){
+    appData.settings.asOfDate = maxDate.toISOString().slice(0,10);
+  }
+  showUploadStatus(`Loaded ${count} rows.`, true);
+  resetUploadForm();
+  renderModeSummary();
+});
+
+function showUploadStatus(msg, ok){
+  const el = document.getElementById('upload-status');
+  el.className = 'status-msg ' + (ok?'status-ok':'status-err');
+  el.textContent = msg;
+}
+
+// ---------- Settings ----------
+function renderSettings(){
+  const s = appData.settings;
+  document.getElementById('lookback').value = s.lookback;
+  document.getElementById('threshold').value = s.threshold;
+  document.getElementById('asof-date').value = s.asOfDate || todayStr();
+  document.getElementById('elig-floor').value = s.eligFloor;
+  document.getElementById('b1').value = s.buckets[0];
+  document.getElementById('b2').value = s.buckets[1];
+  document.getElementById('b3').value = s.buckets[2];
+  document.getElementById('bulk-threshold').value = s.bulkThreshold;
+  document.getElementById('excluded-patterns').value = s.excludedPatterns;
+
+  const bind = (id, fn) => document.getElementById(id).oninput = e => fn(e.target.value);
+  bind('lookback', v=> s.lookback=Number(v)||0);
+  bind('threshold', v=> s.threshold=Number(v)||0);
+  bind('asof-date', v=> s.asOfDate=v);
+  bind('elig-floor', v=> s.eligFloor=Number(v)||0);
+  bind('b1', v=> s.buckets[0]=Number(v)||0);
+  bind('b2', v=> s.buckets[1]=Number(v)||0);
+  bind('b3', v=> s.buckets[2]=Number(v)||0);
+  bind('bulk-threshold', v=> s.bulkThreshold=Number(v)||0);
+  bind('excluded-patterns', v=> s.excludedPatterns=v);
+
+  const listEl = document.getElementById('excluded-list-body');
+  listEl.textContent = computed.excludedForBulk.length===0 ? 'None currently excluded.' : computed.excludedForBulk.join(', ');
+}
+
+// ---------- Session export / import ----------
+document.getElementById('export-session-btn').addEventListener('click', ()=>{
+  downloadFile(JSON.stringify(appData, null, 2), `ere-stale-inventory-session-${todayStr()}.json`, 'application/json');
+});
+document.getElementById('import-btn').addEventListener('click', ()=> document.getElementById('import-input').click());
+document.getElementById('import-input').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const parsed = JSON.parse(await file.text());
+    appData.inventory = parsed.inventory || {};
+    appData.salesRows = (parsed.salesRows||[]).map(r=>({...r, date:new Date(r.date)}));
+    appData.receivedRows = (parsed.receivedRows||[]).map(r=>({...r, date:new Date(r.date)}));
+    appData.settings = parsed.settings || appData.settings;
+    computed = compute();
+    renderSummary();
+    document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+    document.querySelector('nav button[data-page="summary"]').classList.add('active');
+    ['summary','flagged','variants','upload','settings'].forEach(p=>{
+      document.getElementById('page-'+p).classList.toggle('hidden', p!=='summary');
+    });
+    renderModeSummary();
+  }catch(err){ alert("That file doesn't look like a valid session export."); }
+  e.target.value = '';
+});
+
+// ---------- Boot ----------
+setUploadMode('inventory');
+renderModeSummary();
+renderPage('summary');
+</script>
+</body>
+</html>
